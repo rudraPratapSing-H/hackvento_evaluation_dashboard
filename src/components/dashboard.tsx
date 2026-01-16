@@ -57,6 +57,7 @@ export function Dashboard({ teams }: Props) {
   const [videoError, setVideoError] = useState(false);
   const { data: session, status } = useSession();
   const loginPrompted = useRef(false);
+  const judgeKey = useMemo(() => session?.user?.email || session?.user?.name || null, [session?.user?.email, session?.user?.name]);
 
   const filteredTeams = useMemo(() => {
     return teams.filter((team) => team.teamName.toLowerCase().includes(query.toLowerCase()));
@@ -93,7 +94,9 @@ export function Dashboard({ teams }: Props) {
     if (!link) return false;
     try {
       const host = new URL(link).hostname;
-      return host.includes("loom.com");
+      const isLoom = host.includes("loom.com");
+      const isGoogleNonYouTube = host.includes("google.com") && !host.includes("youtube.com");
+      return isLoom || isGoogleNonYouTube;
     } catch {
       return false;
     }
@@ -101,18 +104,25 @@ export function Dashboard({ teams }: Props) {
 
   const currentEntry: ScoreEntry = useMemo(() => {
     if (!activeTeamId) return EMPTY_SCORES;
-    return store[activeTeamId] ?? { ...EMPTY_SCORES };
-  }, [store, activeTeamId]);
+    const teamStore = store[activeTeamId];
+    if (!teamStore) return { ...EMPTY_SCORES };
+    const judges = teamStore.judges ?? [];
+    const match = judgeKey ? judges.find((j) => j.updatedBy === judgeKey) : null;
+    if (match) return match;
+    if (judgeKey && teamStore.updatedBy === judgeKey) return teamStore;
+    return { ...EMPTY_SCORES };
+  }, [store, activeTeamId, judgeKey]);
 
   async function handleSave(next: ScoreEntry) {
-    if (!activeTeamId) return;
+    if (!activeTeamId || !activeTeam?.teamName) return;
+    const teamName = activeTeam.teamName;
     setIsSaving(true);
     setError(null);
     try {
       const res = await fetch("/api/scores", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ teamId: activeTeamId, scores: next })
+        body: JSON.stringify({ teamId: activeTeamId, teamName, scores: next })
       });
       if (!res.ok) {
         const text = await res.text();
@@ -132,14 +142,40 @@ export function Dashboard({ teams }: Props) {
     const next: ScoreEntry = {
       ...currentEntry,
       [category]: Math.max(0, Math.min(15, value)),
-      updatedAt: new Date().toISOString()
+      updatedAt: new Date().toISOString(),
+      updatedBy: judgeKey || "unknown",
+      updatedByName: session?.user?.name || session?.user?.email || "unknown"
     };
-    setStore((prev) => ({ ...prev, [activeTeamId ?? ""]: next }));
+    setStore((prev) => {
+      if (!activeTeamId) return prev;
+      const team = prev[activeTeamId] ?? { judges: [] };
+      const judges = team.judges ?? [];
+      const others = judges.filter((j) => j.updatedBy !== judgeKey);
+      return {
+        ...prev,
+        [activeTeamId]: { ...next, judges: [...others, next] }
+      };
+    });
   }
 
   function setNotes(value: string) {
-    const next: ScoreEntry = { ...currentEntry, notes: value, updatedAt: new Date().toISOString() };
-    setStore((prev) => ({ ...prev, [activeTeamId ?? ""]: next }));
+    const next: ScoreEntry = {
+      ...currentEntry,
+      notes: value,
+      updatedAt: new Date().toISOString(),
+      updatedBy: judgeKey || "unknown",
+      updatedByName: session?.user?.name || session?.user?.email || "unknown"
+    };
+    setStore((prev) => {
+      if (!activeTeamId) return prev;
+      const team = prev[activeTeamId] ?? { judges: [] };
+      const judges = team.judges ?? [];
+      const others = judges.filter((j) => j.updatedBy !== judgeKey);
+      return {
+        ...prev,
+        [activeTeamId]: { ...next, judges: [...others, next] }
+      };
+    });
   }
 
   const totalScore = (entry: ScoreEntry) =>
@@ -204,6 +240,12 @@ export function Dashboard({ teams }: Props) {
                 Sign in with Google
               </button>
             )}
+            <a
+              href="/admin"
+              className="rounded-xl border border-white/15 px-4 py-2 text-sm font-semibold text-white transition hover:border-mint/60 hover:text-mint"
+            >
+              Admin
+            </a>
           </div>
         </div>
       </header>
@@ -284,9 +326,9 @@ export function Dashboard({ teams }: Props) {
                         />
                       ) : (
                         <div className="p-4 text-sm text-cloud/80">
-                          <p className="mb-2">Unable to load the video inline.</p>
-                          <a className="text-mint underline" href={activeTeam.videoLink} target="_blank" rel="noreferrer">
-                            Open video link
+                          <p className="mb-2">Unable to load the video inline (blocked or 403). Use the direct link:</p>
+                          <a className="text-mint underline break-words" href={activeTeam.videoLink} target="_blank" rel="noreferrer">
+                            {activeTeam.videoLink}
                           </a>
                         </div>
                       )}

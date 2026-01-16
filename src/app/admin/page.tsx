@@ -42,19 +42,26 @@ export default async function AdminPage({ searchParams }: { searchParams?: { key
   }
 
   const rankings = Object.values(
-    (data || []).reduce((acc: Record<string, { teamId: string; total: number; judgesCount: number }>, row) => {
-      const t = row.team_id as string;
-      if (!acc[t]) acc[t] = { teamId: t, total: 0, judgesCount: 0 };
-      acc[t].total +=
-        row.problem_relevance +
-        row.technical_feasibility +
-        row.statement_alignment +
-        row.creativity +
-        row.presentation +
-        row.google_tech_use;
-      acc[t].judgesCount += 1;
-      return acc;
-    }, {})
+    (data || []).reduce(
+      (
+        acc: Record<string, { teamId: string; teamName: string; total: number; judgesCount: number }>,
+        row
+      ) => {
+        const key = (row.team_id as string) || (row.team_name as string) || "Unknown Team";
+        const label = (row.team_name as string) || key;
+        if (!acc[key]) acc[key] = { teamId: key, teamName: label, total: 0, judgesCount: 0 };
+        acc[key].total +=
+          row.problem_relevance +
+          row.technical_feasibility +
+          row.statement_alignment +
+          row.creativity +
+          row.presentation +
+          row.google_tech_use;
+        acc[key].judgesCount += 1;
+        return acc;
+      },
+      {}
+    )
   ).sort((a, b) => b.total - a.total);
 
   return (
@@ -85,7 +92,7 @@ export default async function AdminPage({ searchParams }: { searchParams?: { key
               {rankings.map((row, idx) => (
                 <tr key={row.teamId} className={idx % 2 === 0 ? "bg-black/10" : "bg-black/5"}>
                   <td className="px-4 py-3">{idx + 1}</td>
-                  <td className="px-4 py-3 font-semibold text-white">{row.teamId}</td>
+                  <td className="px-4 py-3 font-semibold text-white">{row.teamName}</td>
                   <td className="px-4 py-3 text-right text-lg font-semibold text-white">{row.total}</td>
                   <td className="px-4 py-3 text-right text-cloud/70">{row.judgesCount}</td>
                 </tr>

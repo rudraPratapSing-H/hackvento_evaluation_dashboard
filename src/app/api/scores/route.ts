@@ -26,9 +26,10 @@ function rowsToStore(rows: any[]): ScoreStore {
   const byTeam: ScoreStore = {};
   for (const row of rows) {
     const entry = toEntry(row);
-    const current = byTeam[row.team_id];
+    const key = row.team_id ?? row.team_name ?? "unknown-team";
+    const current = byTeam[key];
     const judges = current?.judges ? [...current.judges, entry] : [entry];
-    byTeam[row.team_id] = { ...entry, judges };
+    byTeam[key] = { ...entry, judges };
   }
   return byTeam;
 }
@@ -46,17 +47,20 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ message: "Unauthorized" }, { status: 401 });
   }
 
-  const body = (await req.json()) as { teamId?: string; scores?: ScoreEntry };
-  if (!body.teamId || !body.scores) {
-    return NextResponse.json({ message: "teamId and scores are required" }, { status: 400 });
+  const body = (await req.json()) as { teamId?: string; teamName?: string; scores?: ScoreEntry };
+  if ((!body.teamId && !body.teamName) || !body.scores) {
+    return NextResponse.json({ message: "teamName (or teamId) and scores are required" }, { status: 400 });
   }
 
   const supabase = supabaseServer();
   const userEmail = session.user.email || session.user.name || "unknown";
   const userName = session.user.name || session.user.email || "unknown";
 
+  const teamKey = body.teamName || body.teamId || "unknown";
+
   const payload = {
-    team_id: body.teamId,
+    team_id: body.teamId ?? teamKey,
+    team_name: body.teamName ?? teamKey,
     judge_email: userEmail,
     judge_name: userName,
     problem_relevance: body.scores.problemRelevance,
