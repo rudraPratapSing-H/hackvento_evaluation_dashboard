@@ -2,6 +2,45 @@ import { supabaseServer } from "@/lib/supabase-server";
 
 export const dynamic = "force-dynamic";
 
+type RankingRow = {
+  teamId: string;
+  teamName: string;
+  total: number;
+  judgesCount: number;
+};
+
+function getTeamKey(row: any) {
+  return (
+    (row.team_id as string) ||
+    (row.team_name as string) ||
+    (row.team as string) ||
+    (row.teamId as string) ||
+    (row.teamid as string) ||
+    "Unknown Team"
+  );
+}
+
+function getTeamLabel(row: any, key: string) {
+  return (
+    (row.team_name as string) ||
+    (row.team as string) ||
+    (row.teamId as string) ||
+    (row.teamid as string) ||
+    key
+  );
+}
+
+function rowScore(row: any) {
+  return (
+    Number(row.problem_relevance) +
+    Number(row.technical_feasibility) +
+    Number(row.statement_alignment) +
+    Number(row.creativity) +
+    Number(row.presentation) +
+    Number(row.google_tech_use)
+  );
+}
+
 export default async function AdminPage({ searchParams }: { searchParams?: { key?: string } }) {
   const key = searchParams?.key || "";
   const adminKey = process.env.ADMIN_KEY;
@@ -37,31 +76,19 @@ export default async function AdminPage({ searchParams }: { searchParams?: { key
 
   const supabase = supabaseServer();
   const { data, error } = await supabase.from("scores").select("*");
-  if (error) {
-    throw new Error(error.message);
-  }
+  if (error) throw new Error(error.message);
 
   const rankings = Object.values(
-    (data || []).reduce(
-      (
-        acc: Record<string, { teamId: string; teamName: string; total: number; judgesCount: number }>,
-        row
-      ) => {
-        const key = (row.team_id as string) || (row.team_name as string) || "Unknown Team";
-        const label = (row.team_name as string) || key;
-        if (!acc[key]) acc[key] = { teamId: key, teamName: label, total: 0, judgesCount: 0 };
-        acc[key].total +=
-          row.problem_relevance +
-          row.technical_feasibility +
-          row.statement_alignment +
-          row.creativity +
-          row.presentation +
-          row.google_tech_use;
-        acc[key].judgesCount += 1;
-        return acc;
-      },
-      {}
-    )
+    (data || []).reduce((acc: Record<string, RankingRow>, row) => {
+      const key = getTeamKey(row);
+      const label = getTeamLabel(row, key);
+      const score = rowScore(row);
+
+      if (!acc[key]) acc[key] = { teamId: key, teamName: label, total: 0, judgesCount: 0 };
+      acc[key].total += Number.isFinite(score) ? score : 0;
+      acc[key].judgesCount += 1;
+      return acc;
+    }, {})
   ).sort((a, b) => b.total - a.total);
 
   return (
