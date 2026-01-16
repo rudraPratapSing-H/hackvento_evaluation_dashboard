@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { TeamRecord, ScoreCategory, ScoreEntry, ScoreStore } from "../types";
 import { clsx } from "clsx";
 import { useSession, signIn, signOut } from "next-auth/react";
@@ -54,7 +54,9 @@ export function Dashboard({ teams }: Props) {
   const [isSaving, setIsSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [modal, setModal] = useState<{ title: string; body: string } | null>(null);
+  const [videoError, setVideoError] = useState(false);
   const { data: session, status } = useSession();
+  const loginPrompted = useRef(false);
 
   const filteredTeams = useMemo(() => {
     return teams.filter((team) => team.teamName.toLowerCase().includes(query.toLowerCase()));
@@ -75,6 +77,27 @@ export function Dashboard({ teams }: Props) {
     };
     loadScores();
   }, []);
+
+  useEffect(() => {
+    if (status === "unauthenticated" && !loginPrompted.current) {
+      loginPrompted.current = true;
+      signIn("google");
+    }
+  }, [status]);
+
+  useEffect(() => {
+    setVideoError(false);
+  }, [activeTeamId]);
+
+  const videoIsFrameDenied = (link?: string) => {
+    if (!link) return false;
+    try {
+      const host = new URL(link).hostname;
+      return host.includes("loom.com");
+    } catch {
+      return false;
+    }
+  };
 
   const currentEntry: ScoreEntry = useMemo(() => {
     if (!activeTeamId) return EMPTY_SCORES;
@@ -181,17 +204,6 @@ export function Dashboard({ teams }: Props) {
                 Sign in with Google
               </button>
             )}
-            <button
-              onClick={() => {
-                const key = window.prompt("Enter admin key to view rankings");
-                if (key && key.trim()) {
-                  window.location.href = `/admin?key=${encodeURIComponent(key.trim())}`;
-                }
-              }}
-              className="rounded-xl border border-white/15 px-4 py-2 text-sm font-semibold text-white transition hover:border-mint/60 hover:text-mint"
-            >
-              Admin rankings
-            </button>
           </div>
         </div>
       </header>
@@ -261,13 +273,23 @@ export function Dashboard({ teams }: Props) {
                       <span className="text-xs text-cloud/60">Up to 3 minutes</span>
                     </div>
                     <div className="relative overflow-hidden rounded-xl border border-white/10 bg-black">
-                      <iframe
-                        className="aspect-video w-full"
-                        src={activeTeam.videoLink}
-                        allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
-                        allowFullScreen
-                        title={`${activeTeam.teamName} demo video`}
-                      />
+                      {!videoError && !videoIsFrameDenied(activeTeam.videoLink) ? (
+                        <iframe
+                          className="aspect-video w-full"
+                          src={activeTeam.videoLink}
+                          allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+                          allowFullScreen
+                          title={`${activeTeam.teamName} demo video`}
+                          onError={() => setVideoError(true)}
+                        />
+                      ) : (
+                        <div className="p-4 text-sm text-cloud/80">
+                          <p className="mb-2">Unable to load the video inline.</p>
+                          <a className="text-mint underline" href={activeTeam.videoLink} target="_blank" rel="noreferrer">
+                            Open video link
+                          </a>
+                        </div>
+                      )}
                     </div>
                   </div>
                 )}
