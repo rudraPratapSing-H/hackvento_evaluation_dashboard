@@ -37,12 +37,23 @@ export async function POST(req: Request) {
     return NextResponse.json({ message: "teamId and scores are required" }, { status: 400 });
   }
 
+  const userEmail = session.user.email || session.user.name || "unknown";
+  const userName = session.user.name || session.user.email || "unknown";
+
   const store = await ensureStore();
-  store[body.teamId] = {
+  const existing = store[body.teamId];
+  const priorJudges = Array.isArray(existing?.judges) ? existing?.judges ?? [] : existing ? [existing] : [];
+  const filtered = priorJudges.filter((judge) => judge.updatedBy !== userEmail);
+
+  const entry: ScoreEntry = {
     ...body.scores,
-    updatedBy: body.scores.updatedBy || session.user.email || session.user.name || "unknown",
+    updatedBy: userEmail,
+    updatedByName: userName,
     updatedAt: body.scores.updatedAt ?? new Date().toISOString()
   };
+
+  const judges = [...filtered, entry];
+  store[body.teamId] = { ...entry, judges };
 
   await fs.writeFile(STORE_PATH, JSON.stringify(store, null, 2));
   return NextResponse.json(store);

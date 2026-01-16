@@ -300,7 +300,8 @@ export function Dashboard({ teams }: Props) {
                     handleSave({
                       ...currentEntry,
                       updatedAt: new Date().toISOString(),
-                      updatedBy: session?.user?.email || session?.user?.name || "unknown"
+                      updatedBy: session?.user?.email || session?.user?.name || "unknown",
+                      updatedByName: session?.user?.name || session?.user?.email || "unknown"
                     })
                   }
                   isSaving={isSaving}
@@ -318,7 +319,11 @@ export function Dashboard({ teams }: Props) {
                       {currentEntry.updatedAt && (
                         <p>Last saved: {new Date(currentEntry.updatedAt).toLocaleString()}</p>
                       )}
-                      {currentEntry.updatedBy && <p>By: {currentEntry.updatedBy}</p>}
+                      {currentEntry.updatedBy && (
+                        <p>
+                          By: {currentEntry.updatedByName ? `${currentEntry.updatedByName} (${currentEntry.updatedBy})` : currentEntry.updatedBy}
+                        </p>
+                      )}
                     </div>
                   )}
 

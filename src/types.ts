@@ -25,7 +25,7 @@ export type ScoreCategory =
 export type ScoreEntry = Record<ScoreCategory, number> & {
   notes?: string;
   updatedBy?: string;
+  updatedByName?: string;
   updatedAt: string;
 };
-
-export type ScoreStore = Record<string, ScoreEntry>;
+export type ScoreStore = Record<string, ScoreEntry & { judges?: ScoreEntry[] }>;
