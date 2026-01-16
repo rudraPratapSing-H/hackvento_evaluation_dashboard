@@ -181,6 +181,17 @@ export function Dashboard({ teams }: Props) {
                 Sign in with Google
               </button>
             )}
+            <button
+              onClick={() => {
+                const key = window.prompt("Enter admin key to view rankings");
+                if (key && key.trim()) {
+                  window.location.href = `/admin?key=${encodeURIComponent(key.trim())}`;
+                }
+              }}
+              className="rounded-xl border border-white/15 px-4 py-2 text-sm font-semibold text-white transition hover:border-mint/60 hover:text-mint"
+            >
+              Admin rankings
+            </button>
           </div>
         </div>
       </header>
