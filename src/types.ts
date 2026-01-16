@@ -24,6 +24,7 @@ export type ScoreCategory =
 
 export type ScoreEntry = Record<ScoreCategory, number> & {
   notes?: string;
+  updatedBy?: string;
   updatedAt: string;
 };
 

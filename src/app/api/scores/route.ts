@@ -1,7 +1,9 @@
 import { promises as fs } from "fs";
 import path from "path";
 import { NextResponse } from "next/server";
-import { ScoreEntry, ScoreStore } from "../../../types";
+import { getServerSession } from "next-auth";
+import { authOptions } from "@/lib/auth";
+import { ScoreEntry, ScoreStore } from "@/types";
 
 const STORE_PATH = path.join(process.cwd(), "data", "scores.json");
 
@@ -25,6 +27,11 @@ export async function GET() {
 }
 
 export async function POST(req: Request) {
+  const session = await getServerSession(authOptions);
+  if (!session?.user) {
+    return NextResponse.json({ message: "Unauthorized" }, { status: 401 });
+  }
+
   const body = (await req.json()) as { teamId?: string; scores?: ScoreEntry };
   if (!body.teamId || !body.scores) {
     return NextResponse.json({ message: "teamId and scores are required" }, { status: 400 });
@@ -33,6 +40,7 @@ export async function POST(req: Request) {
   const store = await ensureStore();
   store[body.teamId] = {
     ...body.scores,
+    updatedBy: body.scores.updatedBy || session.user.email || session.user.name || "unknown",
     updatedAt: body.scores.updatedAt ?? new Date().toISOString()
   };
 

@@ -12,8 +12,18 @@ A Next.js + TypeScript dashboard for GDGOC IET-DAVV judges to search teams, revi
    ```bash
    GOOGLE_SHEETS_SPREADSHEET_ID=1YwELUMp2NK2pPsHeB6PVDTnNnDOwF0CFWLk0IvzOIcs
    GOOGLE_SHEETS_API_KEY=your-api-key
-   GOOGLE_SHEETS_RANGE=Sheet1!A2:K
+   GOOGLE_SHEETS_RANGE=Sheet1!A2:L
    ```
+
+3. Enable Google OAuth for saving scores (only signed-in judges can write to scores.json):
+   ```bash
+   GOOGLE_CLIENT_ID=your-google-oauth-client-id
+   GOOGLE_CLIENT_SECRET=your-google-oauth-client-secret
+   NEXTAUTH_SECRET=generate_a_random_string
+   NEXTAUTH_URL=http://localhost:3000
+   ```
+   - Create OAuth credentials in Google Cloud (Web app). Add `http://localhost:3000/api/auth/callback/google` to the redirect URIs.
+   - Judges must sign in with Google before saving scores.
    Columns expected: Team Name, Leader Name, Leader Email, Leader Phone, Problem Statements, Presentation Link, Live Link, Google Technologies, Google AI Tools, Description, Video Link, GitHub.
 3. Run the dev server:
    ```bash

@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { TeamRecord, ScoreCategory, ScoreEntry, ScoreStore } from "../types";
 import { clsx } from "clsx";
+import { useSession, signIn, signOut } from "next-auth/react";
 
 const CATEGORY_META: Record<ScoreCategory, { label: string; helper: string }> = {
   problemRelevance: {
@@ -52,6 +53,8 @@ export function Dashboard({ teams }: Props) {
   const [store, setStore] = useState<ScoreStore>({});
   const [isSaving, setIsSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [modal, setModal] = useState<{ title: string; body: string } | null>(null);
+  const { data: session, status } = useSession();
 
   const filteredTeams = useMemo(() => {
     return teams.filter((team) => team.teamName.toLowerCase().includes(query.toLowerCase()));
@@ -132,22 +135,52 @@ export function Dashboard({ teams }: Props) {
           <h1 className="text-3xl font-semibold text-gradient lg:text-4xl">Evaluation Dashboard</h1>
           <p className="mt-2 text-cloud/80">Search, review, and score teams in one view.</p>
         </div>
-        <div className="w-full max-w-md lg:w-80">
-          <label className="text-sm text-cloud/70" htmlFor="team-search">
-            Search by team name
-          </label>
-          <div className="mt-2 flex items-center gap-2 rounded-xl input-surface px-3 py-2">
-            <svg className="h-5 w-5 text-cloud/60" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-              <circle cx="11" cy="11" r="7" />
-              <line x1="16.65" y1="16.65" x2="21" y2="21" />
-            </svg>
-            <input
-              id="team-search"
-              value={query}
-              onChange={(e) => setQuery(e.target.value)}
-              placeholder="Start typing..."
-              className="w-full bg-transparent py-1 text-cloud placeholder:text-cloud/50 focus:outline-none"
-            />
+        <div className="flex w-full flex-col gap-3 sm:flex-row sm:items-center sm:justify-end sm:gap-4">
+          <div className="w-full max-w-md lg:w-80">
+            <label className="text-sm text-cloud/70" htmlFor="team-search">
+              Search by team name
+            </label>
+            <div className="mt-2 flex items-center gap-2 rounded-xl input-surface px-3 py-2">
+              <svg className="h-5 w-5 text-cloud/60" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <circle cx="11" cy="11" r="7" />
+                <line x1="16.65" y1="16.65" x2="21" y2="21" />
+              </svg>
+              <input
+                id="team-search"
+                value={query}
+                onChange={(e) => setQuery(e.target.value)}
+                placeholder="Start typing..."
+                className="w-full bg-transparent py-1 text-cloud placeholder:text-cloud/50 focus:outline-none"
+              />
+            </div>
+          </div>
+
+          <div className="flex items-center gap-3">
+            <div className="text-sm text-cloud/70">
+              {status === "authenticated" ? (
+                <div className="text-right">
+                  <p className="font-semibold text-white">{session?.user?.name || session?.user?.email}</p>
+                  <p className="text-xs text-cloud/60">Signed in</p>
+                </div>
+              ) : (
+                <p className="text-right text-cloud/60">Sign in to save scores</p>
+              )}
+            </div>
+            {status === "authenticated" ? (
+              <button
+                onClick={() => signOut()}
+                className="rounded-xl border border-white/15 px-4 py-2 text-sm font-semibold text-white transition hover:border-amber/60 hover:text-amber-200"
+              >
+                Sign out
+              </button>
+            ) : (
+              <button
+                onClick={() => signIn("google")}
+                className="rounded-xl bg-gradient-to-r from-mint to-amber px-4 py-2 text-sm font-semibold text-slate-900 shadow-glass transition hover:brightness-105"
+              >
+                Sign in with Google
+              </button>
+            )}
           </div>
         </div>
       </header>
@@ -210,48 +243,84 @@ export function Dashboard({ teams }: Props) {
                   <InfoCard title="Presentation" href={activeTeam.deckLink} label="Open deck" />
                 )}
                 {activeTeam.liveLink && <InfoCard title="Live Link" href={activeTeam.liveLink} label="View project" />}
+                {activeTeam.videoLink && (
+                  <div className="sm:col-span-2 rounded-2xl border border-white/10 bg-black/40 p-4">
+                    <div className="mb-2 flex items-center justify-between text-sm text-cloud/80">
+                      <span>Demo Video</span>
+                      <span className="text-xs text-cloud/60">Up to 3 minutes</span>
+                    </div>
+                    <div className="relative overflow-hidden rounded-xl border border-white/10 bg-black">
+                      <iframe
+                        className="aspect-video w-full"
+                        src={activeTeam.videoLink}
+                        allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+                        allowFullScreen
+                        title={`${activeTeam.teamName} demo video`}
+                      />
+                    </div>
+                  </div>
+                )}
                 {activeTeam.githubLink && (
                   <InfoCard title="GitHub" href={activeTeam.githubLink} label="Repository" />
                 )}
                 {activeTeam.googleTech && (
-                  <InfoCard title="Google Technologies" body={activeTeam.googleTech} subdued />
+                  <InfoCard
+                    title="Google Technologies"
+                    body={activeTeam.googleTech}
+                    subdued
+                    listFromComma
+                    onReadMore={() => setModal({ title: "Google Technologies", body: activeTeam.googleTech ?? "" })}
+                  />
                 )}
-                {activeTeam.googleAI && <InfoCard title="Google AI Tools" body={activeTeam.googleAI} subdued />}
-                {activeTeam.description && <InfoCard title="Solution Overview" body={activeTeam.description} subdued />}
+                {activeTeam.googleAI && (
+                  <InfoCard
+                    title="Google AI Tools"
+                    body={activeTeam.googleAI}
+                    subdued
+                    listFromComma
+                    onReadMore={() => setModal({ title: "Google AI Tools", body: activeTeam.googleAI ?? "" })}
+                  />
+                )}
+                {activeTeam.description && (
+                  <InfoCard
+                    title="Solution Overview"
+                    body={activeTeam.description}
+                    subdued
+                    onReadMore={() => setModal({ title: "Solution Overview", body: activeTeam.description ?? "" })}
+                  />
+                )}
               </div>
-
-              {activeTeam.videoLink && (
-                <div className="rounded-2xl border border-white/10 bg-black/40 p-4">
-                  <div className="mb-2 flex items-center justify-between text-sm text-cloud/80">
-                    <span>Demo Video</span>
-                    <span className="text-xs text-cloud/60">Up to 3 minutes</span>
-                  </div>
-                  <div className="relative overflow-hidden rounded-xl border border-white/10 bg-black">
-                    <iframe
-                      className="aspect-video w-full"
-                      src={activeTeam.videoLink}
-                      allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
-                      allowFullScreen
-                      title={`${activeTeam.teamName} demo video`}
-                    />
-                  </div>
-                </div>
-              )}
 
               <div className="grid gap-6 lg:grid-cols-[1.2fr,0.9fr]">
                 <ScoreForm
                   entry={currentEntry}
                   onChange={setField}
                   onNotes={setNotes}
-                  onSave={() => handleSave({ ...currentEntry, updatedAt: new Date().toISOString() })}
+                  onSave={() =>
+                    handleSave({
+                      ...currentEntry,
+                      updatedAt: new Date().toISOString(),
+                      updatedBy: session?.user?.email || session?.user?.name || "unknown"
+                    })
+                  }
                   isSaving={isSaving}
                   error={error}
+                  isAuthed={status === "authenticated"}
                 />
 
                 <div className="rounded-2xl border border-white/10 bg-white/5 p-5">
                   <p className="text-xs uppercase tracking-[0.2em] text-cloud/60">Score Snapshot</p>
                   <p className="mt-2 text-4xl font-semibold text-white">{totalScore(currentEntry)} / 90</p>
-                  <p className="text-sm text-cloud/70">Sum of six criteria (0-15 each).</p>
+                    <p className="text-sm text-cloud/70">Sum of six criteria (0-15 each).</p>
+
+                  {(currentEntry.updatedAt || currentEntry.updatedBy) && (
+                    <div className="mt-3 space-y-1 text-sm text-cloud/70">
+                      {currentEntry.updatedAt && (
+                        <p>Last saved: {new Date(currentEntry.updatedAt).toLocaleString()}</p>
+                      )}
+                      {currentEntry.updatedBy && <p>By: {currentEntry.updatedBy}</p>}
+                    </div>
+                  )}
 
                   <div className="mt-4 space-y-3 text-sm text-cloud/80">
                     {(Object.keys(CATEGORY_META) as ScoreCategory[]).map((key) => (
@@ -276,11 +345,50 @@ export function Dashboard({ teams }: Props) {
           )}
         </section>
       </div>
+
+      {modal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 px-4 py-8">
+          <div className="max-h-[80vh] w-full max-w-2xl overflow-y-auto rounded-2xl border border-white/15 bg-slate-900/95 p-6 shadow-glass">
+            <div className="mb-4 flex items-start justify-between gap-3">
+              <div>
+                <p className="text-xs uppercase tracking-[0.25em] text-cloud/60">Expanded</p>
+                <h3 className="text-2xl font-semibold text-white">{modal.title}</h3>
+              </div>
+              <button
+                onClick={() => setModal(null)}
+                className="rounded-full border border-white/20 px-3 py-1 text-sm text-cloud hover:border-amber/60 hover:text-amber-200"
+              >
+                Close
+              </button>
+            </div>
+            <p className="whitespace-pre-line text-cloud/90">{modal.body}</p>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
 
-function InfoCard({ title, label, href, body, subdued }: { title: string; label?: string; href?: string; body?: string; subdued?: boolean }) {
+function InfoCard({
+  title,
+  label,
+  href,
+  body,
+  subdued,
+  listFromComma,
+  onReadMore
+}: {
+  title: string;
+  label?: string;
+  href?: string;
+  body?: string;
+  subdued?: boolean;
+  listFromComma?: boolean;
+  onReadMore?: () => void;
+}) {
+  const items = listFromComma && body ? body.split(/,|;/).map((item) => item.trim()).filter(Boolean) : null;
+  const isLong = (body?.length ?? 0) > 180;
+
   return (
     <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
       <p className="text-xs uppercase tracking-[0.2em] text-cloud/60">{title}</p>
@@ -297,8 +405,27 @@ function InfoCard({ title, label, href, body, subdued }: { title: string; label?
             <path d="M8 7h9v9" />
           </svg>
         </a>
+      ) : items ? (
+        <div className="mt-2 space-y-1">
+          {items.map((item) => (
+            <div key={item} className="flex items-start gap-2 text-sm text-cloud/85">
+              <span className="mt-[6px] h-1.5 w-1.5 rounded-full bg-mint" />
+              <span className="leading-relaxed">{item}</span>
+            </div>
+          ))}
+        </div>
       ) : (
-        <p className={clsx("mt-2 leading-relaxed", subdued ? "text-cloud/80" : "text-white")}>{body}</p>
+        <div className="mt-2">
+          <p className={clsx("leading-relaxed", subdued ? "text-cloud/80" : "text-white", isLong && "line-clamp-4")}>{body}</p>
+          {isLong && onReadMore && (
+            <button
+              onClick={onReadMore}
+              className="mt-2 text-sm font-semibold text-mint underline-offset-2 hover:text-white hover:underline"
+            >
+              Read more
+            </button>
+          )}
+        </div>
       )}
     </div>
   );
@@ -311,19 +438,21 @@ type ScoreFormProps = {
   onSave: () => void;
   isSaving: boolean;
   error: string | null;
+  isAuthed: boolean;
 };
 
-function ScoreForm({ entry, onChange, onNotes, onSave, isSaving, error }: ScoreFormProps) {
+function ScoreForm({ entry, onChange, onNotes, onSave, isSaving, error, isAuthed }: ScoreFormProps) {
   return (
     <div className="rounded-2xl border border-white/10 bg-white/5 p-5">
       <div className="flex items-start justify-between gap-3">
         <div>
           <p className="text-xs uppercase tracking-[0.2em] text-cloud/60">Evaluation</p>
           <h3 className="text-xl font-semibold text-white">Score (0-15 each)</h3>
+          {!isAuthed && <p className="text-xs text-amber-200">Sign in with Google to save scores.</p>}
         </div>
         <button
           onClick={onSave}
-          disabled={isSaving}
+          disabled={isSaving || !isAuthed}
           className="rounded-xl bg-gradient-to-r from-mint to-amber px-4 py-2 text-sm font-semibold text-slate-900 shadow-glass transition hover:brightness-105 disabled:cursor-not-allowed disabled:opacity-60"
         >
           {isSaving ? "Saving..." : "Save scores"}
