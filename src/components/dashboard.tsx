@@ -57,7 +57,9 @@ export function Dashboard({ teams }: Props) {
   const [videoError, setVideoError] = useState(false);
   const { data: session, status } = useSession();
   const loginPrompted = useRef(false);
-  const judgeKey = useMemo(() => session?.user?.email || session?.user?.name || null, [session?.user?.email, session?.user?.name]);
+  const judgeEmail = session?.user?.email?.toLowerCase() || null;
+  const judgeName = session?.user?.name?.toLowerCase() || null;
+  const judgeKey = useMemo(() => judgeEmail || judgeName, [judgeEmail, judgeName]);
 
   const filteredTeams = useMemo(() => {
     return teams.filter((team) => team.teamName.toLowerCase().includes(query.toLowerCase()));
@@ -78,6 +80,21 @@ export function Dashboard({ teams }: Props) {
     };
     loadScores();
   }, []);
+
+  useEffect(() => {
+    if (status !== "authenticated" || !judgeKey) return;
+    const loadScores = async () => {
+      try {
+        const res = await fetch("/api/scores", { cache: "no-store" });
+        if (!res.ok) throw new Error("Unable to load scores");
+        const json = (await res.json()) as ScoreStore;
+        setStore(json);
+      } catch (err) {
+        console.warn(err);
+      }
+    };
+    loadScores();
+  }, [status, judgeKey]);
 
   useEffect(() => {
     if (status === "unauthenticated" && !loginPrompted.current) {
@@ -107,11 +124,23 @@ export function Dashboard({ teams }: Props) {
     const teamStore = store[activeTeamId];
     if (!teamStore) return { ...EMPTY_SCORES };
     const judges = teamStore.judges ?? [];
-    const match = judgeKey ? judges.find((j) => j.updatedBy === judgeKey) : null;
+    const match = judgeKey
+      ? judges.find((j) => {
+          const by = j.updatedBy?.toLowerCase();
+          const byName = j.updatedByName?.toLowerCase();
+          return by === judgeKey || byName === judgeKey || (judgeEmail && by === judgeEmail) || (judgeName && by === judgeName);
+        })
+      : null;
     if (match) return match;
-    if (judgeKey && teamStore.updatedBy === judgeKey) return teamStore;
+    if (judgeKey) {
+      const by = teamStore.updatedBy?.toLowerCase();
+      const byName = teamStore.updatedByName?.toLowerCase();
+      if (by === judgeKey || byName === judgeKey || (judgeEmail && by === judgeEmail) || (judgeName && by === judgeName)) {
+        return teamStore;
+      }
+    }
     return { ...EMPTY_SCORES };
-  }, [store, activeTeamId, judgeKey]);
+  }, [store, activeTeamId, judgeKey, judgeEmail, judgeName]);
 
   async function handleSave(next: ScoreEntry) {
     if (!activeTeamId || !activeTeam?.teamName) return;
@@ -143,7 +172,7 @@ export function Dashboard({ teams }: Props) {
       ...currentEntry,
       [category]: Math.max(0, Math.min(15, value)),
       updatedAt: new Date().toISOString(),
-      updatedBy: judgeKey || "unknown",
+      updatedBy: judgeEmail || judgeName || "unknown",
       updatedByName: session?.user?.name || session?.user?.email || "unknown"
     };
     setStore((prev) => {
@@ -163,7 +192,7 @@ export function Dashboard({ teams }: Props) {
       ...currentEntry,
       notes: value,
       updatedAt: new Date().toISOString(),
-      updatedBy: judgeKey || "unknown",
+      updatedBy: judgeEmail || judgeName || "unknown",
       updatedByName: session?.user?.name || session?.user?.email || "unknown"
     };
     setStore((prev) => {
@@ -315,7 +344,7 @@ export function Dashboard({ teams }: Props) {
                       <span className="text-xs text-cloud/60">Up to 3 minutes</span>
                     </div>
                     <div className="relative overflow-hidden rounded-xl border border-white/10 bg-black">
-                      {!videoError && !videoIsFrameDenied(activeTeam.videoLink) ? (
+                      {videoIsFrameDenied(activeTeam.videoLink) ? (
                         <iframe
                           className="aspect-video w-full"
                           src={activeTeam.videoLink}
@@ -326,12 +355,22 @@ export function Dashboard({ teams }: Props) {
                         />
                       ) : (
                         <div className="p-4 text-sm text-cloud/80">
-                          <p className="mb-2">Unable to load the video inline (blocked or 403). Use the direct link:</p>
-                          <a className="text-mint underline break-words" href={activeTeam.videoLink} target="_blank" rel="noreferrer">
+                          <p className="mb-2">Unable to load the video inline. Use the direct link:</p>
+                          <a
+                            className="text-mint underline break-words"
+                            href={activeTeam.videoLink}
+                            target="_blank"
+                            rel="noreferrer"
+                          >
                             {activeTeam.videoLink}
                           </a>
                         </div>
                       )}
+                      <div className="absolute bottom-2 right-2 rounded-full bg-black/60 px-3 py-1 text-xs text-cloud/80">
+                        <a className="text-mint hover:text-white" href={activeTeam.videoLink} target="_blank" rel="noreferrer">
+                          Open video link
+                        </a>
+                      </div>
                     </div>
                   </div>
                 )}

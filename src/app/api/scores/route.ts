@@ -17,7 +17,7 @@ function toEntry(row: any): ScoreEntry {
     googleTechUse: row.google_tech_use,
     notes: row.notes || "",
     updatedAt: row.updated_at,
-    updatedBy: row.judge_email,
+    updatedBy: (row.judge_email as string | undefined)?.toLowerCase() || row.judge_email,
     updatedByName: row.judge_name
   };
 }
@@ -35,8 +35,19 @@ function rowsToStore(rows: any[]): ScoreStore {
 }
 
 export async function GET() {
+  const session = await getServerSession(authOptions);
   const supabase = supabaseServer();
-  const { data, error } = await supabase.from(TABLE).select("*");
+
+  // If not signed in yet, return an empty store so the client doesn't see others' scores.
+  if (!session?.user) {
+    return NextResponse.json({});
+  }
+
+  const judgeKeyRaw = session.user.email || session.user.name;
+  if (!judgeKeyRaw) return NextResponse.json({});
+  const judgeKey = judgeKeyRaw.toLowerCase();
+
+  const { data, error } = await supabase.from(TABLE).select("*").eq("judge_email", judgeKey);
   if (error) return NextResponse.json({ message: error.message }, { status: 500 });
   return NextResponse.json(rowsToStore(data || []));
 }
@@ -55,13 +66,14 @@ export async function POST(req: NextRequest) {
   const supabase = supabaseServer();
   const userEmail = session.user.email || session.user.name || "unknown";
   const userName = session.user.name || session.user.email || "unknown";
+  const userEmailLower = userEmail.toLowerCase();
 
   const teamKey = body.teamName || body.teamId || "unknown";
 
-  const payload = {
-    team_id: body.teamId ?? teamKey,
-    team_name: body.teamName ?? teamKey,
-    judge_email: userEmail,
+    const payloadBase = {
+      team_id: body.teamId ?? teamKey,
+      team_name: body.teamName,
+    judge_email: userEmailLower,
     judge_name: userName,
     problem_relevance: body.scores.problemRelevance,
     technical_feasibility: body.scores.technicalFeasibility,
@@ -73,10 +85,19 @@ export async function POST(req: NextRequest) {
     updated_at: body.scores.updatedAt ?? new Date().toISOString()
   };
 
-  const { error: upsertError } = await supabase.from(TABLE).upsert(payload, { onConflict: "team_id,judge_email" });
+  const payloadWithName = { ...payloadBase, team_name: body.teamName ?? teamKey } as const;
+
+  const tryUpsert = async (payload: Record<string, unknown>) =>
+    supabase.from(TABLE).upsert(payload, { onConflict: "team_id,judge_email" });
+
+  let upsertError;
+  ({ error: upsertError } = await tryUpsert(payloadWithName));
+  if (upsertError && (upsertError.code === "42703" || upsertError.message?.includes("team_name"))) {
+    ({ error: upsertError } = await tryUpsert(payloadBase));
+  }
   if (upsertError) return NextResponse.json({ message: upsertError.message }, { status: 500 });
 
-  const { data, error } = await supabase.from(TABLE).select("*");
+  const { data, error } = await supabase.from(TABLE).select("*").eq("judge_email", userEmailLower);
   if (error) return NextResponse.json({ message: error.message }, { status: 500 });
 
   return NextResponse.json(rowsToStore(data || []));
