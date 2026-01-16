@@ -1,4 +1,3 @@
-import { promises as fs } from "fs";
 import { NextRequest, NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
@@ -66,13 +65,12 @@ export async function POST(req: NextRequest) {
   const supabase = supabaseServer();
   const userEmail = session.user.email || session.user.name || "unknown";
   const userName = session.user.name || session.user.email || "unknown";
-  const userEmailLower = userEmail.toLowerCase();
+  const userEmailLower = typeof userEmail === "string" ? userEmail.toLowerCase() : "unknown";
 
   const teamKey = body.teamName || body.teamId || "unknown";
 
-    const payloadBase = {
-      team_id: body.teamId ?? teamKey,
-      team_name: body.teamName,
+  const payloadBase = {
+    team_id: body.teamId ?? teamKey,
     judge_email: userEmailLower,
     judge_name: userName,
     problem_relevance: body.scores.problemRelevance,
