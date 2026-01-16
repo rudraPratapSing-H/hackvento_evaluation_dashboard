@@ -71,6 +71,7 @@ export async function POST(req: NextRequest) {
 
   const payloadBase = {
     team_id: body.teamId ?? teamKey,
+    team_name: body.teamName,
     judge_email: userEmailLower,
     judge_name: userName,
     problem_relevance: body.scores.problemRelevance,
