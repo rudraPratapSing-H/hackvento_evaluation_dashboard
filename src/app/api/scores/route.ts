@@ -1,32 +1,46 @@
 import { promises as fs } from "fs";
-import path from "path";
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import { ScoreEntry, ScoreStore } from "@/types";
+import { supabaseServer } from "@/lib/supabase-server";
 
-const STORE_PATH = path.join(process.cwd(), "data", "scores.json");
+const TABLE = "scores";
 
-async function ensureStore(): Promise<ScoreStore> {
-  try {
-    const data = await fs.readFile(STORE_PATH, "utf-8");
-    return JSON.parse(data) as ScoreStore;
-  } catch (err) {
-    if ((err as NodeJS.ErrnoException).code === "ENOENT") {
-      await fs.mkdir(path.dirname(STORE_PATH), { recursive: true });
-      await fs.writeFile(STORE_PATH, JSON.stringify({}, null, 2));
-      return {};
-    }
-    throw err;
+function toEntry(row: any): ScoreEntry {
+  return {
+    problemRelevance: row.problem_relevance,
+    technicalFeasibility: row.technical_feasibility,
+    statementAlignment: row.statement_alignment,
+    creativity: row.creativity,
+    presentation: row.presentation,
+    googleTechUse: row.google_tech_use,
+    notes: row.notes || "",
+    updatedAt: row.updated_at,
+    updatedBy: row.judge_email,
+    updatedByName: row.judge_name
+  };
+}
+
+function rowsToStore(rows: any[]): ScoreStore {
+  const byTeam: ScoreStore = {};
+  for (const row of rows) {
+    const entry = toEntry(row);
+    const current = byTeam[row.team_id];
+    const judges = current?.judges ? [...current.judges, entry] : [entry];
+    byTeam[row.team_id] = { ...entry, judges };
   }
+  return byTeam;
 }
 
 export async function GET() {
-  const store = await ensureStore();
-  return NextResponse.json(store);
+  const supabase = supabaseServer();
+  const { data, error } = await supabase.from(TABLE).select("*");
+  if (error) return NextResponse.json({ message: error.message }, { status: 500 });
+  return NextResponse.json(rowsToStore(data || []));
 }
 
-export async function POST(req: Request) {
+export async function POST(req: NextRequest) {
   const session = await getServerSession(authOptions);
   if (!session?.user) {
     return NextResponse.json({ message: "Unauthorized" }, { status: 401 });
@@ -37,26 +51,33 @@ export async function POST(req: Request) {
     return NextResponse.json({ message: "teamId and scores are required" }, { status: 400 });
   }
 
+  const supabase = supabaseServer();
   const userEmail = session.user.email || session.user.name || "unknown";
   const userName = session.user.name || session.user.email || "unknown";
 
-  const store = await ensureStore();
-  const existing = store[body.teamId];
-  const priorJudges = Array.isArray(existing?.judges) ? existing?.judges ?? [] : existing ? [existing] : [];
-  const filtered = priorJudges.filter((judge) => judge.updatedBy !== userEmail);
-
-  const entry: ScoreEntry = {
-    ...body.scores,
-    updatedBy: userEmail,
-    updatedByName: userName,
-    updatedAt: body.scores.updatedAt ?? new Date().toISOString()
+  const payload = {
+    team_id: body.teamId,
+    judge_email: userEmail,
+    judge_name: userName,
+    problem_relevance: body.scores.problemRelevance,
+    technical_feasibility: body.scores.technicalFeasibility,
+    statement_alignment: body.scores.statementAlignment,
+    creativity: body.scores.creativity,
+    presentation: body.scores.presentation,
+    google_tech_use: body.scores.googleTechUse,
+    notes: body.scores.notes || "",
+    updated_at: body.scores.updatedAt ?? new Date().toISOString()
   };
 
-  const judges = [...filtered, entry];
-  store[body.teamId] = { ...entry, judges };
+  const { error: upsertError } = await supabase.from(TABLE).upsert(payload, { onConflict: "team_id,judge_email" });
+  if (upsertError) return NextResponse.json({ message: upsertError.message }, { status: 500 });
 
-  await fs.writeFile(STORE_PATH, JSON.stringify(store, null, 2));
-  return NextResponse.json(store);
+  const { data, error } = await supabase.from(TABLE).select("*");
+  if (error) return NextResponse.json({ message: error.message }, { status: 500 });
+
+  return NextResponse.json(rowsToStore(data || []));
 }
+
+export const dynamic = "force-dynamic";
 
 export const dynamic = "force-dynamic";

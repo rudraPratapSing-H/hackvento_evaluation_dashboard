@@ -1,28 +1,6 @@
-import fs from "fs/promises";
-import path from "path";
-import { ScoreEntry, ScoreStore } from "@/types";
+import { supabaseServer } from "@/lib/supabase-server";
 
 export const dynamic = "force-dynamic";
-
-function totalScore(entry: ScoreEntry) {
-  return (
-    entry.problemRelevance +
-    entry.technicalFeasibility +
-    entry.statementAlignment +
-    entry.creativity +
-    entry.presentation +
-    entry.googleTechUse
-  );
-}
-
-async function readScores(): Promise<ScoreStore> {
-  try {
-    const raw = await fs.readFile(path.join(process.cwd(), "data", "scores.json"), "utf-8");
-    return JSON.parse(raw) as ScoreStore;
-  } catch {
-    return {} as ScoreStore;
-  }
-}
 
 export default async function AdminPage({ searchParams }: { searchParams?: { key?: string } }) {
   const key = searchParams?.key || "";
@@ -57,14 +35,27 @@ export default async function AdminPage({ searchParams }: { searchParams?: { key
     );
   }
 
-  const scores = await readScores();
-  const rankings = Object.entries(scores).map(([teamId, entry]) => {
-    const judges = Array.isArray(entry.judges) ? entry.judges : entry ? [entry] : [];
-    const total = judges.reduce((sum, j) => sum + totalScore(j), 0);
-    return { teamId, total, judgesCount: judges.length };
-  });
+  const supabase = supabaseServer();
+  const { data, error } = await supabase.from("scores").select("*");
+  if (error) {
+    throw new Error(error.message);
+  }
 
-  rankings.sort((a, b) => b.total - a.total);
+  const rankings = Object.values(
+    (data || []).reduce((acc: Record<string, { teamId: string; total: number; judgesCount: number }>, row) => {
+      const t = row.team_id as string;
+      if (!acc[t]) acc[t] = { teamId: t, total: 0, judgesCount: 0 };
+      acc[t].total +=
+        row.problem_relevance +
+        row.technical_feasibility +
+        row.statement_alignment +
+        row.creativity +
+        row.presentation +
+        row.google_tech_use;
+      acc[t].judgesCount += 1;
+      return acc;
+    }, {})
+  ).sort((a, b) => b.total - a.total);
 
   return (
     <main className="min-h-screen bg-slate-950 px-4 py-10 text-cloud">
